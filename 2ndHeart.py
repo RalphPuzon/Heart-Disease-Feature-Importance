@@ -135,7 +135,9 @@ X = wdata[['age','sex','restingBP','serumCholesterol',
                  'majorVesselCount','thalassemia']]
 #mvr check:
 (pd.DataFrame(X).isnull().sum()/len(X))*100
+print((pd.DataFrame(X).isnull().sum()/len(X))*100)
 
+X = X[X['STSlope']!= "None"]
 y = wdata.loc[:,['target']].values
 
 #get dummies:
@@ -211,9 +213,7 @@ print("Feature importances defined by a model wth accucracy of" + str(round(accm
 
 #model refinement using back propagation and grid search CV:
 
-"""
-this section will be frequently updated, as better models arise
-"""
+
 
 plt.figure(figsize=(18,9))
 sns.heatmap(X.corr(), annot=True)
@@ -221,69 +221,99 @@ plt.show()
 
 corr_grid = pd.DataFrame(X.corr())
 
+"""
+this section will be frequently updated, as better models arise
+"""
 
 
-X.columns
 rX = X[['age', 'restingBP', 'serumCholesterol', 'maxHeartRate', 'STDepression',
        'majorVesselCount', 'sex_male', 'fastingBloodSugar>120_True',
        'restingEKG_normal',
        "restingEKG_probable or definite left ventricular hypertrophy by Estes' criteria",
        'exerciseInducedAngina_yes', 'STSlope_upsloping', 'thalassemia_normal',
        'thalassemia_reversible defect']]
+
+ls = ['age', 'restingBP', 'serumCholesterol', 'maxHeartRate', 'STDepression',
+       'majorVesselCount', 'sex_male', 'fastingBloodSugar>120_True',
+       'restingEKG_normal',
+       "restingEKG_probable or definite left ventricular hypertrophy by Estes' criteria",
+       'exerciseInducedAngina_yes', 'STSlope_upsloping', 'thalassemia_normal',
+       'thalassemia_reversible defect']
 ry = y[0:]   
+
+hardSearchBlock = []
+for i in range(0,len(rX.columns)):
+
+    ls = ['age', 'restingBP', 'serumCholesterol', 'maxHeartRate', 'STDepression',
+           'majorVesselCount', 'sex_male', 'fastingBloodSugar>120_True',
+           'restingEKG_normal',
+           "restingEKG_probable or definite left ventricular hypertrophy by Estes' criteria",
+           'exerciseInducedAngina_yes', 'STSlope_upsloping', 'thalassemia_normal',
+           'thalassemia_reversible defect']
     
-rX_train, rX_test, ry_train, ry_test = train_test_split(rX, ry,
-                                                        test_size = 0.20,
-                                                        random_state = 0)
+    ls.remove(ls[i])
+    rX = X[ls]
+    rX_train, rX_test, ry_train, ry_test = train_test_split(rX, ry,
+                                                            test_size = 0.20,
+                                                            random_state = 0)
+    
+    rsc = StandardScaler()
+    rX_train = rsc.fit_transform(rX_train)
+    rX_test = rsc.transform(rX_test)
+    
+    rclassifier = XGBClassifier(booster = 'gbtree', 
+                                colsample_bytree = 0.5, 
+                                eta = 0.01, gamma = 10, max_depth = 3,
+                                subsample = 0.5)
+    rclassifier.fit(rX_train, ry_train.ravel())
+    
+    # Predicting the Test set results
+    ry_pred = rclassifier.predict(rX_test)
+    
+    # Making the Confusion Matrix
+    rcm = confusion_matrix(ry_test, ry_pred)
+    rcm
+    def rcm_calc():
+        rcmc = ((rcm[0][0]+rcm[1][1])/(rcm[0][0]+rcm[1][1]+rcm[1][0]+rcm[0][1]))*100
+        print("Accucracy is " + str(round(rcmc,3)) + "%")
+    
+    raccuracies = cross_val_score(estimator = rclassifier, X = rX_train,
+                                  y = ry_train.ravel(), cv = 10)
+    raccmean = raccuracies.mean()
+    rstddev = raccuracies.std()
+    print ("Accucracy is " + str(round(raccmean,3)) + "%")
+    
+    #feature importance and graphing of the feature importance:
+    rXfi = rX[0:]
+    rfeatures = rXfi.columns
+    rimportances = rclassifier.feature_importances_
+    rindices = np.argsort(rimportances)
+    
+    plt.title('Heart Disease Feature Importances')
+    plt.barh(range(len(rindices)),rimportances[rindices], color = 'b',
+             align = 'center')
+    plt.yticks(range(len(rindices)), [rfeatures[i] for i in rindices])
+    plt.xlabel('Relative Importance')
+    plt.show()
+    
+    print(accmean, raccmean, ((raccmean/accmean)*100)-100)
+    hardSearchBlock.append(raccmean)
 
-rsc = StandardScaler()
-rX_train = rsc.fit_transform(rX_train)
-rX_test = rsc.transform(rX_test)
+idx = list(range(0,len(hardSearchBlock)))
 
-rclassifier = XGBClassifier(booster = 'gbtree', 
-                            colsample_bytree = 0.5, 
-                            eta = 0.01, gamma = 10, max_depth = 3,
-                            subsample = 0.5)
-rclassifier.fit(rX_train, ry_train.ravel())
-
-# Predicting the Test set results
-ry_pred = rclassifier.predict(rX_test)
-
-# Making the Confusion Matrix
-rcm = confusion_matrix(ry_test, ry_pred)
-rcm
-def rcm_calc():
-    rcmc = ((rcm[0][0]+rcm[1][1])/(rcm[0][0]+rcm[1][1]+rcm[1][0]+rcm[0][1]))*100
-    print("Accucracy is " + str(round(rcmc,3)) + "%")
-
-raccuracies = cross_val_score(estimator = rclassifier, X = rX_train, y = ry_train.ravel(), cv = 10)
-raccmean = raccuracies.mean()
-rstddev = raccuracies.std()
-print ("Accucracy is " + str(round(raccmean,3)) + "%")
-
-#feature importance and graphing of the feature importance:
-rXfi = rX[0:]
-rfeatures = rXfi.columns
-rimportances = rclassifier.feature_importances_
-rindices = np.argsort(rimportances)
-
-plt.title('Heart Disease Feature Importances')
-plt.barh(range(len(rindices)),rimportances[rindices], color = 'b',
-         align = 'center')
-plt.yticks(range(len(rindices)), [rfeatures[i] for i in rindices])
-plt.xlabel('Relative Importance')
-plt.show()
-
-print(accmean, raccmean, ((raccmean/accmean)*100)-100)
+HBSGrid = pd.DataFrame({'HSBVals': hardSearchBlock, 'rX[index]': idx})
+HBSGrid['rX[index]']=HBSGrid['rX[index]'].astype(object)
+HBSGrid = HBSGrid.sort_values(by ='HSBVals' ,ascending = False)
 
 #PARAMETER TUNING OF XGBOOST:
 from sklearn.model_selection import GridSearchCV
 
 """
-blocked off so as not to rerun grid search (~2hours) on initialization.
-uncomment to allow for grid search.
+#blocked off so as not to rerun grid search (~2hours) on initialization.
+#uncomment to allow for grid search.
 
-parameters = [{'booster':['gbtree','gblinear','dart'],
+parameters = [{'tree_method': ['gpu_hist'],
+               'booster':['gbtree','gblinear','dart'],
                'gamma':[0,0.1,1,10,100,1000],
                'eta':[0.01,0.05,0.1,0.15,0.2,0.25,0.3],
                'max_depth':[3,4,5,6,7,8,9,10],
@@ -299,6 +329,8 @@ grid_search = grid_search.fit(rX_train, ry_train.ravel())
 best_accuracy = grid_search.best_score_
 best_parameters = grid_search.best_params_
 """
+
+
 #CURRENTLY NEEDS MODEL OPTIMIZATION.
 
 
